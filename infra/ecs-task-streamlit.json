@@ -1,0 +1,86 @@
+{
+  "family": "hr-rag-streamlit",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn":      "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole",
+
+  "containerDefinitions": [
+    {
+      "name":      "hr-rag-streamlit",
+      "image":     "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/hr-rag-chatbot:latest",
+      "essential": true,
+
+      "portMappings": [
+        {
+          "containerPort": 8501,
+          "protocol":      "tcp"
+        }
+      ],
+
+      "command": [
+        "streamlit", "run", "app.py",
+        "--server.port",      "8501",
+        "--server.address",   "0.0.0.0",
+        "--server.headless",  "true",
+        "--browser.gatherUsageStats", "false"
+      ],
+
+      "environment": [
+        { "name": "APP_ENV",           "value": "production" },
+        { "name": "LOG_LEVEL",         "value": "INFO" },
+        { "name": "VECTOR_STORE_TYPE", "value": "chroma" },
+        { "name": "VECTOR_STORE_PATH", "value": "/app/vectorstore" },
+        { "name": "HR_DOCS_PATH",      "value": "/app/data/hr_policies" },
+        { "name": "LLM_MODEL",         "value": "llama-3.1-8b-instant" },
+        { "name": "EMBEDDING_MODEL",   "value": "sentence-transformers/all-MiniLM-L6-v2" },
+        { "name": "API_BASE_URL",      "value": "http://YOUR_API_ALB_DNS:8000" }
+      ],
+
+      "secrets": [
+        {
+          "name":      "GROQ_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:YOUR_REGION:YOUR_ACCOUNT_ID:secret:hr-rag/groq-api-key"
+        }
+      ],
+
+      "mountPoints": [
+        {
+          "sourceVolume":  "vectorstore",
+          "containerPath": "/app/vectorstore",
+          "readOnly":      true
+        }
+      ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/hr-rag-streamlit",
+          "awslogs-region":        "YOUR_REGION",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group":  "true"
+        }
+      },
+
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "curl -f http://localhost:8501/_stcore/health || exit 1"],
+        "interval":    30,
+        "timeout":     10,
+        "retries":     3,
+        "startPeriod": 60
+      }
+    }
+  ],
+
+  "volumes": [
+    {
+      "name": "vectorstore",
+      "efsVolumeConfiguration": {
+        "fileSystemId":  "YOUR_EFS_ID",
+        "rootDirectory": "/vectorstore"
+      }
+    }
+  ]
+}

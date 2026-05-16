@@ -1,0 +1,107 @@
+{
+  "family": "hr-rag-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn":      "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole",
+
+  "containerDefinitions": [
+    {
+      "name":      "hr-rag-api",
+      "image":     "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/hr-rag-chatbot:latest",
+      "essential": true,
+
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol":      "tcp"
+        }
+      ],
+
+      "command": [
+        "uvicorn", "api:app",
+        "--host", "0.0.0.0",
+        "--port", "8000",
+        "--workers", "1"
+      ],
+
+      "environment": [
+        { "name": "APP_ENV",              "value": "production" },
+        { "name": "LOG_LEVEL",            "value": "INFO" },
+        { "name": "VECTOR_STORE_TYPE",    "value": "chroma" },
+        { "name": "VECTOR_STORE_PATH",    "value": "/app/vectorstore" },
+        { "name": "HR_DOCS_PATH",         "value": "/app/data/hr_policies" },
+        { "name": "LLM_MODEL",            "value": "llama-3.1-8b-instant" },
+        { "name": "LLM_TEMPERATURE",      "value": "0.0" },
+        { "name": "LLM_MAX_TOKENS",       "value": "1024" },
+        { "name": "CHUNK_SIZE",           "value": "500" },
+        { "name": "CHUNK_OVERLAP",        "value": "50" },
+        { "name": "TOP_K_RESULTS",        "value": "5" },
+        { "name": "SIMILARITY_THRESHOLD", "value": "0.75" },
+        { "name": "EMBEDDING_MODEL",      "value": "sentence-transformers/all-MiniLM-L6-v2" }
+      ],
+
+      "secrets": [
+        {
+          "name":      "GROQ_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:YOUR_REGION:YOUR_ACCOUNT_ID:secret:hr-rag/groq-api-key"
+        }
+      ],
+
+      "mountPoints": [
+        {
+          "sourceVolume":  "vectorstore",
+          "containerPath": "/app/vectorstore",
+          "readOnly":      false
+        },
+        {
+          "sourceVolume":  "hr-docs",
+          "containerPath": "/app/data/hr_policies",
+          "readOnly":      true
+        }
+      ],
+
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/hr-rag-api",
+          "awslogs-region":        "YOUR_REGION",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group":  "true"
+        }
+      },
+
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval":    30,
+        "timeout":     10,
+        "retries":     3,
+        "startPeriod": 60
+      }
+    }
+  ],
+
+  "volumes": [
+    {
+      "name": "vectorstore",
+      "efsVolumeConfiguration": {
+        "fileSystemId":          "YOUR_EFS_ID",
+        "rootDirectory":         "/vectorstore",
+        "transitEncryptionPort": 2999,
+        "authorizationConfig": {
+          "accessPointId": "YOUR_EFS_ACCESS_POINT_ID",
+          "iam":           "ENABLED"
+        }
+      }
+    },
+    {
+      "name": "hr-docs",
+      "efsVolumeConfiguration": {
+        "fileSystemId":  "YOUR_EFS_ID",
+        "rootDirectory": "/hr-docs"
+      }
+    }
+  ]
+}

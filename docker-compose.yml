@@ -1,0 +1,166 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# docker-compose.yml — Minimal Space Usage
+#
+# Key fix: ONE shared image built once, reused by all 3 services
+# Before: 3 images × 600MB = 1.8GB + 3× build cache = 32GB
+# After:  1 image × 600MB = 600MB + 1× build cache = ~8GB
+# ══════════════════════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+# ── Shared image — built ONCE, reused by api + streamlit + ingest ─────────────
+x-app: &app
+  image: hr-rag-chatbot:latest    # same image tag = built once only
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  networks:
+    - hr_network
+
+# ── Shared env vars ───────────────────────────────────────────────────────────
+x-env: &env
+  GROQ_API_KEY:         ${GROQ_API_KEY}
+  LLM_MODEL:            ${LLM_MODEL:-llama-3.1-8b-instant}
+  LLM_TEMPERATURE:      ${LLM_TEMPERATURE:-0.0}
+  LLM_MAX_TOKENS:       ${LLM_MAX_TOKENS:-1024}
+  EMBEDDING_MODEL:      ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+  VECTOR_STORE_TYPE:    chroma
+  VECTOR_STORE_PATH:    /app/vectorstore
+  HR_DOCS_PATH:         /app/data/hr_policies
+  CHUNK_SIZE:           ${CHUNK_SIZE:-500}
+  CHUNK_OVERLAP:        ${CHUNK_OVERLAP:-50}
+  TOP_K_RESULTS:        ${TOP_K_RESULTS:-5}
+  SIMILARITY_THRESHOLD: ${SIMILARITY_THRESHOLD:-0.75}
+  APP_ENV:              ${APP_ENV:-development}
+  LOG_LEVEL:            ${LOG_LEVEL:-INFO}
+  SENTENCE_TRANSFORMERS_HOME: /app/.cache/sentence_transformers
+
+# ── Shared volumes ────────────────────────────────────────────────────────────
+x-volumes: &volumes
+  - ./data:/app/data
+  - vectorstore_data:/app/vectorstore
+  - model_cache:/app/.cache
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Services
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── ChromaDB ─────────────────────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest   # separate small image — not our build
+    container_name: hr_chromadb
+    ports:
+      - "8002:8000"
+    volumes:
+      - vectorstore_data:/chroma/chroma
+    environment:
+      IS_PERSISTENT:        "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    mem_limit: 512m
+    healthcheck:
+      test:         ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval:     10s
+      timeout:      5s
+      retries:      5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - hr_network
+
+
+  # ── Ingest (one-shot job) ─────────────────────────────────────────────────
+  ingest:
+    <<: *app                        # reuses hr-rag-chatbot:latest — no rebuild
+    container_name: hr_ingest
+    command: ["python", "ingest.py"]
+    environment:
+      <<: *env
+    volumes: *volumes
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    mem_limit: 1g
+    restart: "no"                   # one-shot — never restart
+
+
+  # ── FastAPI ───────────────────────────────────────────────────────────────
+  api:
+    <<: *app                        # reuses hr-rag-chatbot:latest — no rebuild
+    container_name: hr_api
+    command: >
+      uvicorn api:app
+      --host 0.0.0.0
+      --port 8000
+      --workers 1
+      --log-level info
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *env
+    volumes: *volumes
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      ingest:
+        condition: service_completed_successfully
+    mem_limit: 1500m
+    healthcheck:
+      test:         ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval:     30s
+      timeout:      10s
+      retries:      3
+      start_period: 60s
+
+
+  # ── Streamlit ─────────────────────────────────────────────────────────────
+  streamlit:
+    <<: *app                        # reuses hr-rag-chatbot:latest — no rebuild
+    container_name: hr_streamlit
+    command: >
+      streamlit run app.py
+      --server.port 8501
+      --server.address 0.0.0.0
+      --server.headless true
+      --browser.gatherUsageStats false
+    ports:
+      - "8501:8501"
+    environment:
+      <<: *env
+      API_BASE_URL: http://api:8000
+    volumes: *volumes
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      ingest:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    mem_limit: 800m
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Volumes
+# ══════════════════════════════════════════════════════════════════════════════
+
+volumes:
+  vectorstore_data:
+    driver: local
+    name: hr_vectorstore
+
+  model_cache:
+    driver: local
+    name: hr_model_cache
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Network
+# ══════════════════════════════════════════════════════════════════════════════
+
+networks:
+  hr_network:
+    driver: bridge
+    name: hr_network
