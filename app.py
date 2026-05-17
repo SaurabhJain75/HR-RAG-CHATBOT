@@ -32,10 +32,11 @@ def auto_ingest():
  
     # ── Find HR docs folder ───────────────────────────────────────────────────
     possible_paths = [
-        Path(__file__).resolve().parent / "data" / "hr_policies",
-        Path("/home/user/app/data/hr_policies"),
-        Path("/app/data/hr_policies"),
-        Path("data/hr_policies"),
+        Path("/app/data/hr_policies"),                              # HuggingFace Spaces
+        Path(__file__).resolve().parent / "data" / "hr_policies",  # local / relative
+        Path("/home/user/app/data/hr_policies"),                    # HF alternative
+        Path("/app/data/hr_policies"),                              # Docker
+        Path("data/hr_policies"),                                   # fallback
     ]
  
     docs_path = None
@@ -77,7 +78,6 @@ def auto_ingest():
         traceback.print_exc()
         print(f"[startup] INGEST ERROR: {e}")
         st.error(f"⚠️ Failed to load HR documents: {e}")
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Page Config
@@ -720,10 +720,8 @@ def main():
     init_session()
 
     # Auto-ingest HR documents on startup
-    ingest_status = auto_ingest()
-    if ingest_status.get("status") == "error":
-        st.warning(f"⚠️ Could not load HR documents: {ingest_status.get('error')}")
-
+    auto_ingest()
+    
     render_sidebar()
 
     st.markdown("""
