@@ -1,9 +1,7 @@
 """
 app.py — HR Policy RAG Chatbot
-Fixed:
-  1. Sources HTML rendering correctly (separate st.markdown call)
-  2. Chat input full width matching body
-  3. Non-functional nav tabs removed from sidebar
+Supports local run, Docker, and HuggingFace Spaces deployment.
+Auto-ingests HR documents on first startup.
 """
 
 import uuid
@@ -12,6 +10,45 @@ import streamlit as st
 from agents import ask, get_welcome_message
 from config import app_config, validate_all
 from models import ChatHistory, MessageType, QueryRequest, Role
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Auto-ingest on startup (HuggingFace Spaces + first-time local run)
+# Runs once per session — skipped if vector store already has documents
+# ══════════════════════════════════════════════════════════════════════════════
+
+@st.cache_resource(show_spinner="Loading HR policy documents...")
+def auto_ingest():
+    """
+    Automatically ingest HR documents on first startup.
+    Uses st.cache_resource so it only runs ONCE per app instance.
+    """
+    try:
+        from rag import get_collection_stats
+        from ingest import ingest_all
+        from config import ingest_config
+
+        # Check if vector store already has documents
+        stats = get_collection_stats()
+        total = stats.get("total_chunks", 0)
+
+        if total and int(total) > 0:
+            print(f"[startup] Vector store ready — {total} chunks loaded.")
+            return {"status": "ready", "chunks": total}
+
+        # Ingest if empty
+        if ingest_config.HR_DOCS_PATH.exists():
+            print("[startup] Ingesting HR documents...")
+            summary = ingest_all()
+            print(f"[startup] Ingested {summary.total_chunks} chunks from {summary.successful_files} files.")
+            return {"status": "ingested", "chunks": summary.total_chunks}
+        else:
+            print("[startup] No HR docs folder found — skipping ingest.")
+            return {"status": "no_docs", "chunks": 0}
+
+    except Exception as e:
+        print(f"[startup] Ingest error: {e}")
+        return {"status": "error", "error": str(e)}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Page Config
@@ -61,6 +98,7 @@ html, body, [class*="css"] {
 [data-testid="stMainBlockContainer"] {
     padding-top: 0rem !important;
 }
+
 /* ── Background ── */
 .stApp {
     background: var(--bg);
@@ -71,7 +109,6 @@ html, body, [class*="css"] {
     min-height: 100vh;
 }
 
-/* ── Main content area ── */
 /* ── Main content area ── */
 .main .block-container {
     max-width: 860px;
@@ -191,10 +228,9 @@ section.main > div {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 0 0.8rem;
-    margin-top: 0rem;
+    padding: 1.25rem 0 1rem;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 1rem;
+    margin-bottom: 1.75rem;
     animation: fadeDown 0.5s ease both;
 }
 .chat-header-left {
@@ -328,7 +364,6 @@ section.main > div {
 ══════════════════════════════════════ */
 .welcome-wrap {
     text-align: center;
-    margin-top: 0 !important;
     padding: 2.5rem 0 1.5rem;
     animation: fadeUp 0.6s ease both;
 }
@@ -400,7 +435,7 @@ section.main > div {
     width: 100% !important;
 }
 [data-testid="stChatInput"] textarea::placeholder {
-    # color: var(--text3) !important;
+    color: var(--text3) !important;
 }
 
 /* ── Spinner ── */
@@ -654,6 +689,12 @@ def handle_question(question: str):
 
 def main():
     init_session()
+
+    # Auto-ingest HR documents on startup
+    ingest_status = auto_ingest()
+    if ingest_status.get("status") == "error":
+        st.warning(f"⚠️ Could not load HR documents: {ingest_status.get('error')}")
+
     render_sidebar()
 
     st.markdown("""

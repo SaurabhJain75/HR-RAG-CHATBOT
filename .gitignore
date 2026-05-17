@@ -26,7 +26,6 @@ dist/
 build/
 
 # Data files — may contain sensitive HR documents
-data/
 
 # Logs
 *.log

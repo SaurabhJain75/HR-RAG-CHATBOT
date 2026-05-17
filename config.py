@@ -14,6 +14,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
+# ── HuggingFace Spaces persistent storage ──────────────────────────────────────
+# HF Spaces provides /data as persistent volume — use for vectorstore
+# Falls back to BASE_DIR for local/Docker runs
+HF_DATA_DIR = Path("/data") if Path("/data").exists() else BASE_DIR
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Helper
@@ -64,7 +69,7 @@ class LLMConfig:
 
 class VectorStoreConfig:
     TYPE: str = os.getenv("VECTOR_STORE_TYPE", "chroma")        # chroma | faiss
-    PATH: Path = BASE_DIR / os.getenv("VECTOR_STORE_PATH", "vectorstore")
+    PATH: Path = HF_DATA_DIR / os.getenv("VECTOR_STORE_PATH", "vectorstore")
 
     @classmethod
     def validate(cls):
