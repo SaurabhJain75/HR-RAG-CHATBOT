@@ -464,7 +464,7 @@ padding-top: 0rem !important;
     bottom: 0 !important;
     # left: 0 !important;  ====
     right: 0 !important;
-    # padding: 0.875rem 2rem 1.25rem !important; =====
+    # padding: 0.875rem 2rem 1.25rem !important; ===
     background: linear-gradient(to top, var(--bg) 65%, transparent) !important;
     z-index: 999 !important;
     display: flex !important;
