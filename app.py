@@ -150,6 +150,10 @@ html, body, [class*="css"] {
     color: var(--text);
 }
 
+[data-testid="stMainBlockContainer"] { 
+padding-top: 0rem !important; 
+}
+
 /* ── Background ── */
 .stApp {
     background: var(--bg);

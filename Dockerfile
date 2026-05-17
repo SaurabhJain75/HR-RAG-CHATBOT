@@ -63,7 +63,10 @@ COPY schemas.py .
 COPY api.py .
 COPY app.py .
 
-RUN mkdir -p data/hr_policies vectorstore .cache/sentence_transformers
+# Copy HR policy documents into image
+COPY data/ data/
+
+RUN mkdir -p vectorstore .cache/sentence_transformers
 
 RUN addgroup --system appgroup && \
     adduser --system --ingroup appgroup appuser && \
