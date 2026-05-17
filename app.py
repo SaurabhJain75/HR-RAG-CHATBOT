@@ -153,7 +153,14 @@ html, body, [class*="css"] {
 [data-testid="stMainBlockContainer"] { 
 padding-top: 0rem !important; 
 }
-
+.st-emotion-cache-13g6l27 {
+    width: 100%;           /* take full width of parent */
+    max-width: 800px;      /* optional: restrict maximum width */
+    margin: 0 auto;        /* center horizontally */
+    padding-left: 1rem;    /* optional horizontal padding */
+    padding-right: 1rem;   /* optional horizontal padding */
+    box-sizing: border-box; /* include padding in width */
+}
 /* ── Background ── */
 .stApp {
     background: var(--bg);
@@ -339,7 +346,7 @@ padding-top: 0rem !important;
 }
 .bubble-bot {
     background: var(--bot-bg);
-    backdrop-filter: blur(18px);
+    # backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     border: 1px solid var(--border2);
     border-radius: 4px 18px 18px 18px;
@@ -455,9 +462,9 @@ padding-top: 0rem !important;
 [data-testid="stChatInput"] {
     position: fixed !important;
     bottom: 0 !important;
-    left: 0 !important;
+    # left: 0 !important;  ====
     right: 0 !important;
-    padding: 0.875rem 2rem 1.25rem !important;
+    # padding: 0.875rem 2rem 1.25rem !important; =====
     background: linear-gradient(to top, var(--bg) 65%, transparent) !important;
     z-index: 999 !important;
     display: flex !important;
@@ -465,7 +472,6 @@ padding-top: 0rem !important;
 }
 [data-testid="stChatInput"] > div {
     width: 100% !important;
-    max-width: 860px !important;
     background: var(--bg3) !important;
     border: 1px solid var(--border2) !important;
     border-radius: 14px !important;
