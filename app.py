@@ -17,7 +17,6 @@ from models import ChatHistory, MessageType, QueryRequest, Role
 # Runs once per session — skipped if vector store already has documents
 # ══════════════════════════════════════════════════════════════════════════════
 
-
 def auto_ingest():
     """
     Automatically ingest HR documents on first startup.
@@ -27,34 +26,61 @@ def auto_ingest():
     from pathlib import Path
     from rag import get_collection_stats
     from ingest import ingest_all
- 
+
+    import os
     print("[startup] ===== AUTO INGEST STARTING =====")
- 
+    print(f"[startup] Current working directory: {os.getcwd()}")
+    print(f"[startup] __file__ resolved: {Path(__file__).resolve()}")
+    print(f"[startup] __file__ parent: {Path(__file__).resolve().parent}")
+
+    # List everything in cwd and /app to find where files are
+    for check_dir in [os.getcwd(), "/app", "/home/user/app"]:
+        try:
+            entries = os.listdir(check_dir)
+            print(f"[startup] Contents of {check_dir}: {entries}")
+        except Exception as e:
+            print(f"[startup] Cannot list {check_dir}: {e}")
+
     # ── Find HR docs folder ───────────────────────────────────────────────────
+    cwd = Path(os.getcwd())
+    file_dir = Path(__file__).resolve().parent
     possible_paths = [
-        Path("/app/data/hr_policies"),                              # HuggingFace Spaces
-        Path(__file__).resolve().parent / "data" / "hr_policies",  # local / relative
-        Path("/home/user/app/data/hr_policies"),                    # HF alternative
-        Path("/app/data/hr_policies"),                              # Docker
-        Path("data/hr_policies"),                                   # fallback
+        file_dir / "data" / "hr_policies",       # relative to app.py
+        cwd / "data" / "hr_policies",            # relative to cwd
+        Path("/app/data/hr_policies"),            # HuggingFace /app
+        Path("/home/user/app/data/hr_policies"),  # HuggingFace /home/user
+        Path("data/hr_policies"),                 # pure relative
     ]
- 
+
     docs_path = None
     for p in possible_paths:
-        print(f"[startup] Checking path: {p} | exists={p.exists()}")
-        if p.exists():
+        exists = p.exists()
+        print(f"[startup] Checking: {p} | exists={exists}")
+        if exists:
             files = (list(p.rglob("*.pdf")) + list(p.rglob("*.docx")) +
                      list(p.rglob("*.txt")) + list(p.rglob("*.md")))
-            print(f"[startup] Files found: {[f.name for f in files]}")
+            print(f"[startup] Files in {p}: {[f.name for f in files]}")
             if files:
                 docs_path = p
                 break
- 
+
     if not docs_path:
-        print("[startup] ERROR: No HR documents found in any path!")
-        st.error("⚠️ No HR documents found. Please add PDFs to data/hr_policies/")
+        # Last resort: search entire filesystem for PDF files
+        print("[startup] Searching entire /app for PDFs...")
+        try:
+            all_pdfs = list(Path("/app").rglob("*.pdf"))
+            print(f"[startup] All PDFs found anywhere: {all_pdfs}")
+            if all_pdfs:
+                docs_path = all_pdfs[0].parent
+                print(f"[startup] Using parent folder: {docs_path}")
+        except Exception as e:
+            print(f"[startup] Search error: {e}")
+
+    if not docs_path:
+        print("[startup] ERROR: No HR documents found anywhere!")
+        st.error("No HR documents found. Check logs for path details.")
         return
- 
+
     # ── Check if already ingested ─────────────────────────────────────────────
     try:
         stats = get_collection_stats()
@@ -64,7 +90,7 @@ def auto_ingest():
             return
     except Exception as e:
         print(f"[startup] Vector store check error: {e} — will ingest fresh.")
- 
+
     # ── Run ingestion ─────────────────────────────────────────────────────────
     print(f"[startup] Ingesting documents from: {docs_path}")
     try:
@@ -124,10 +150,6 @@ html, body, [class*="css"] {
     color: var(--text);
 }
 
-[data-testid="stMainBlockContainer"] {
-    padding-top: 0rem !important;
-}
-
 /* ── Background ── */
 .stApp {
     background: var(--bg);
@@ -141,16 +163,8 @@ html, body, [class*="css"] {
 /* ── Main content area ── */
 .main .block-container {
     max-width: 860px;
-    padding-top: 0.5rem !important;
-    padding-right: 2rem;
-    padding-left: 2rem;
-    padding-bottom: 1rem;
+    padding: 0 2rem 6rem;
     margin: 0 auto;
-}
-
-/* Remove default Streamlit top spacing */
-section.main > div {
-    padding-top: 0rem !important;
 }
 
 /* ══════════════════════════════════════
@@ -436,7 +450,7 @@ section.main > div {
 ══════════════════════════════════════ */
 [data-testid="stChatInput"] {
     position: fixed !important;
-    bottom: 0px !important;
+    bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
     padding: 0.875rem 2rem 1.25rem !important;
@@ -447,9 +461,8 @@ section.main > div {
 }
 [data-testid="stChatInput"] > div {
     width: 100% !important;
-    margin: 0 0 0 400px !important;       /* center horizontally */
     max-width: 860px !important;
-    # background: var(--bg3) !important;
+    background: var(--bg3) !important;
     border: 1px solid var(--border2) !important;
     border-radius: 14px !important;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(167,139,250,0.05) !important;
@@ -460,7 +473,7 @@ section.main > div {
     font-family: 'Plus Jakarta Sans', sans-serif !important;
     font-size: 0.9rem !important;
     caret-color: var(--accent) !important;
-    min-height: 28px !important;
+    min-height: 48px !important;
     width: 100% !important;
 }
 [data-testid="stChatInput"] textarea::placeholder {
@@ -721,7 +734,7 @@ def main():
 
     # Auto-ingest HR documents on startup
     auto_ingest()
-    
+
     render_sidebar()
 
     st.markdown("""
