@@ -18,60 +18,66 @@ from models import ChatHistory, MessageType, QueryRequest, Role
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-@st.cache_resource(show_spinner="Loading HR policy documents...")
 def auto_ingest():
     """
     Automatically ingest HR documents on first startup.
     Works on local, Docker, and HuggingFace Spaces.
+    Called directly — no caching so it always runs fresh.
     """
+    from pathlib import Path
+    from rag import get_collection_stats
+    from ingest import ingest_all
+ 
+    print("[startup] ===== AUTO INGEST STARTING =====")
+ 
+    # ── Find HR docs folder ───────────────────────────────────────────────────
+    possible_paths = [
+        Path(__file__).resolve().parent / "data" / "hr_policies",
+        Path("/home/user/app/data/hr_policies"),
+        Path("/app/data/hr_policies"),
+        Path("data/hr_policies"),
+    ]
+ 
+    docs_path = None
+    for p in possible_paths:
+        print(f"[startup] Checking path: {p} | exists={p.exists()}")
+        if p.exists():
+            files = (list(p.rglob("*.pdf")) + list(p.rglob("*.docx")) +
+                     list(p.rglob("*.txt")) + list(p.rglob("*.md")))
+            print(f"[startup] Files found: {[f.name for f in files]}")
+            if files:
+                docs_path = p
+                break
+ 
+    if not docs_path:
+        print("[startup] ERROR: No HR documents found in any path!")
+        st.error("⚠️ No HR documents found. Please add PDFs to data/hr_policies/")
+        return
+ 
+    # ── Check if already ingested ─────────────────────────────────────────────
     try:
-        from pathlib import Path
-        from rag import get_collection_stats
-        from ingest import ingest_all
+        stats = get_collection_stats()
+        total = stats.get("total_chunks", 0)
+        if total and int(total) > 0:
+            print(f"[startup] Vector store already has {total} chunks — skipping ingest.")
+            return
+    except Exception as e:
+        print(f"[startup] Vector store check error: {e} — will ingest fresh.")
  
-        # Check multiple possible locations
-        possible_paths = [
-            Path(__file__).resolve().parent / "data" / "hr_policies",
-            Path("/home/user/app/data/hr_policies"),
-            Path("/app/data/hr_policies"),
-            Path("data/hr_policies"),
-        ]
- 
-        docs_path = None
-        for p in possible_paths:
-            print(f"[startup] Checking: {p} — exists: {p.exists()}")
-            if p.exists():
-                files = list(p.rglob("*.pdf")) + list(p.rglob("*.docx")) +                         list(p.rglob("*.txt")) + list(p.rglob("*.md"))
-                if files:
-                    docs_path = p
-                    print(f"[startup] Found {len(files)} documents at: {p}")
-                    break
- 
-        if not docs_path:
-            print("[startup] No HR documents found in any known path.")
-            return {"status": "no_docs", "chunks": 0}
- 
-        # Check if already ingested
-        try:
-            stats = get_collection_stats()
-            total = stats.get("total_chunks", 0)
-            if total and int(total) > 0:
-                print(f"[startup] Vector store ready — {total} chunks loaded.")
-                return {"status": "ready", "chunks": total}
-        except Exception as e:
-            print(f"[startup] Vector store check: {e} — will ingest.")
- 
-        # Ingest
-        print(f"[startup] Ingesting from: {docs_path}")
-        summary = ingest_all(docs_path)
-        print(f"[startup] Done — {summary.total_chunks} chunks from {summary.successful_files} files.")
-        return {"status": "ingested", "chunks": summary.total_chunks}
- 
+    # ── Run ingestion ─────────────────────────────────────────────────────────
+    print(f"[startup] Ingesting documents from: {docs_path}")
+    try:
+        with st.spinner("Loading HR policy documents for the first time..."):
+            summary = ingest_all(docs_path)
+        print(f"[startup] SUCCESS — {summary.total_chunks} chunks from {summary.successful_files} files.")
+        if summary.failed_files > 0:
+            print(f"[startup] WARNING — {summary.failed_files} files failed.")
     except Exception as e:
         import traceback
         traceback.print_exc()
-        print(f"[startup] Ingest error: {e}")
-        return {"status": "error", "error": str(e)}
+        print(f"[startup] INGEST ERROR: {e}")
+        st.error(f"⚠️ Failed to load HR documents: {e}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Page Config
