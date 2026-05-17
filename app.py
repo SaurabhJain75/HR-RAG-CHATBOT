@@ -17,36 +17,59 @@ from models import ChatHistory, MessageType, QueryRequest, Role
 # Runs once per session — skipped if vector store already has documents
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 @st.cache_resource(show_spinner="Loading HR policy documents...")
 def auto_ingest():
     """
     Automatically ingest HR documents on first startup.
-    Uses st.cache_resource so it only runs ONCE per app instance.
+    Works on local, Docker, and HuggingFace Spaces.
     """
     try:
+        from pathlib import Path
         from rag import get_collection_stats
         from ingest import ingest_all
-        from config import ingest_config
-
-        # Check if vector store already has documents
-        stats = get_collection_stats()
-        total = stats.get("total_chunks", 0)
-
-        if total and int(total) > 0:
-            print(f"[startup] Vector store ready — {total} chunks loaded.")
-            return {"status": "ready", "chunks": total}
-
-        # Ingest if empty
-        if ingest_config.HR_DOCS_PATH.exists():
-            print("[startup] Ingesting HR documents...")
-            summary = ingest_all()
-            print(f"[startup] Ingested {summary.total_chunks} chunks from {summary.successful_files} files.")
-            return {"status": "ingested", "chunks": summary.total_chunks}
-        else:
-            print("[startup] No HR docs folder found — skipping ingest.")
+ 
+        # Check multiple possible locations
+        possible_paths = [
+            Path(__file__).resolve().parent / "data" / "hr_policies",
+            Path("/home/user/app/data/hr_policies"),
+            Path("/app/data/hr_policies"),
+            Path("data/hr_policies"),
+        ]
+ 
+        docs_path = None
+        for p in possible_paths:
+            print(f"[startup] Checking: {p} — exists: {p.exists()}")
+            if p.exists():
+                files = list(p.rglob("*.pdf")) + list(p.rglob("*.docx")) +                         list(p.rglob("*.txt")) + list(p.rglob("*.md"))
+                if files:
+                    docs_path = p
+                    print(f"[startup] Found {len(files)} documents at: {p}")
+                    break
+ 
+        if not docs_path:
+            print("[startup] No HR documents found in any known path.")
             return {"status": "no_docs", "chunks": 0}
-
+ 
+        # Check if already ingested
+        try:
+            stats = get_collection_stats()
+            total = stats.get("total_chunks", 0)
+            if total and int(total) > 0:
+                print(f"[startup] Vector store ready — {total} chunks loaded.")
+                return {"status": "ready", "chunks": total}
+        except Exception as e:
+            print(f"[startup] Vector store check: {e} — will ingest.")
+ 
+        # Ingest
+        print(f"[startup] Ingesting from: {docs_path}")
+        summary = ingest_all(docs_path)
+        print(f"[startup] Done — {summary.total_chunks} chunks from {summary.successful_files} files.")
+        return {"status": "ingested", "chunks": summary.total_chunks}
+ 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"[startup] Ingest error: {e}")
         return {"status": "error", "error": str(e)}
 
