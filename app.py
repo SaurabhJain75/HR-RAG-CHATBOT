@@ -157,8 +157,7 @@ padding-top: 0rem !important;
     width: 100%;           /* take full width of parent */
     max-width: 800px;      /* optional: restrict maximum width */
     margin: 0 auto;        /* center horizontally */
-    padding-left: 1rem;    /* optional horizontal padding */
-    padding-right: 1rem;   /* optional horizontal padding */
+    padding: 0;    /* optional horizontal padding */
     box-sizing: border-box; /* include padding in width */
 }
 /* ── Background ── */
